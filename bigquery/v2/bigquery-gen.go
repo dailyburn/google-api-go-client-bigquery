@@ -1,17 +1,16 @@
 // Package bigquery provides access to the BigQuery API.
 //
-// See https://developers.google.com/bigquery/docs/overview
+// See https://cloud.google.com/bigquery/
 //
 // Usage example:
 //
-//   import "code.google.com/p/google-api-go-client/bigquery/v2"
+//   import "google.golang.org/api/bigquery/v2"
 //   ...
 //   bigqueryService, err := bigquery.New(oauthHttpClient)
 package bigquery
 
 import (
 	"bytes"
-	"code.google.com/p/google-api-go-client/googleapi"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -20,6 +19,9 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+
+	"golang.org/x/net/context"
+	"google.golang.org/api/googleapi"
 )
 
 // Always reference these packages, just in case the auto-generated code
@@ -33,6 +35,7 @@ var _ = url.Parse
 var _ = googleapi.Version
 var _ = errors.New
 var _ = strings.Replace
+var _ = context.Background
 
 const apiId = "bigquery:v2"
 const apiName = "bigquery"
@@ -44,17 +47,20 @@ const (
 	// View and manage your data in Google BigQuery
 	BigqueryScope = "https://www.googleapis.com/auth/bigquery"
 
+	// Insert data into Google BigQuery
+	BigqueryInsertdataScope = "https://www.googleapis.com/auth/bigquery.insertdata"
+
 	// View and manage your data across Google Cloud Platform services
 	CloudPlatformScope = "https://www.googleapis.com/auth/cloud-platform"
 
 	// Manage your data and permissions in Google Cloud Storage
-	DevstorageFull_controlScope = "https://www.googleapis.com/auth/devstorage.full_control"
+	DevstorageFullControlScope = "https://www.googleapis.com/auth/devstorage.full_control"
 
 	// View your data in Google Cloud Storage
-	DevstorageRead_onlyScope = "https://www.googleapis.com/auth/devstorage.read_only"
+	DevstorageReadOnlyScope = "https://www.googleapis.com/auth/devstorage.read_only"
 
 	// Manage your data in Google Cloud Storage
-	DevstorageRead_writeScope = "https://www.googleapis.com/auth/devstorage.read_write"
+	DevstorageReadWriteScope = "https://www.googleapis.com/auth/devstorage.read_write"
 )
 
 func New(client *http.Client) (*Service, error) {
@@ -71,8 +77,9 @@ func New(client *http.Client) (*Service, error) {
 }
 
 type Service struct {
-	client   *http.Client
-	BasePath string // API endpoint base URL
+	client    *http.Client
+	BasePath  string // API endpoint base URL
+	UserAgent string // optional additional User-Agent fragment
 
 	Datasets *DatasetsService
 
@@ -83,6 +90,13 @@ type Service struct {
 	Tabledata *TabledataService
 
 	Tables *TablesService
+}
+
+func (s *Service) userAgent() string {
+	if s.UserAgent == "" {
+		return googleapi.UserAgent
+	}
+	return googleapi.UserAgent + " " + s.UserAgent
 }
 
 func NewDatasetsService(s *Service) *DatasetsService {
@@ -130,6 +144,51 @@ type TablesService struct {
 	s *Service
 }
 
+type CsvOptions struct {
+	// AllowJaggedRows: [Optional] Indicates if BigQuery should accept rows
+	// that are missing trailing optional columns. If true, BigQuery treats
+	// missing trailing columns as null values. If false, records with
+	// missing trailing columns are treated as bad records, and if there are
+	// too many bad records, an invalid error is returned in the job result.
+	// The default value is false.
+	AllowJaggedRows bool `json:"allowJaggedRows,omitempty"`
+
+	// AllowQuotedNewlines: [Optional] Indicates if BigQuery should allow
+	// quoted data sections that contain newline characters in a CSV file.
+	// The default value is false.
+	AllowQuotedNewlines bool `json:"allowQuotedNewlines,omitempty"`
+
+	// Encoding: [Optional] The character encoding of the data. The
+	// supported values are UTF-8 or ISO-8859-1. The default value is UTF-8.
+	// BigQuery decodes the data after the raw, binary data has been split
+	// using the values of the quote and fieldDelimiter properties.
+	Encoding string `json:"encoding,omitempty"`
+
+	// FieldDelimiter: [Optional] The separator for fields in a CSV file.
+	// BigQuery converts the string to ISO-8859-1 encoding, and then uses
+	// the first byte of the encoded string to split the data in its raw,
+	// binary state. BigQuery also supports the escape sequence "\t" to
+	// specify a tab separator. The default value is a comma (',').
+	FieldDelimiter string `json:"fieldDelimiter,omitempty"`
+
+	// Quote: [Optional] The value that is used to quote data sections in a
+	// CSV file. BigQuery converts the string to ISO-8859-1 encoding, and
+	// then uses the first byte of the encoded string to split the data in
+	// its raw, binary state. The default value is a double-quote ('"'). If
+	// your data does not contain quoted sections, set the property value to
+	// an empty string. If your data contains quoted newline characters, you
+	// must also set the allowQuotedNewlines property to true.
+	//
+	// Default: "
+	Quote *string `json:"quote,omitempty"`
+
+	// SkipLeadingRows: [Optional] The number of rows at the top of a CSV
+	// file that BigQuery will skip when reading the data. The default value
+	// is 0. This property is useful if you have header rows in the file
+	// that should be skipped.
+	SkipLeadingRows int64 `json:"skipLeadingRows,omitempty"`
+}
+
 type Dataset struct {
 	// Access: [Optional] An array of objects that define dataset access for
 	// one or more entities. You can set this property when inserting or
@@ -148,6 +207,19 @@ type Dataset struct {
 
 	// DatasetReference: [Required] A reference that identifies the dataset.
 	DatasetReference *DatasetReference `json:"datasetReference,omitempty"`
+
+	// DefaultTableExpirationMs: [Experimental] The default lifetime of all
+	// tables in the dataset, in milliseconds. The minimum value is 3600000
+	// milliseconds (one hour). Once this property is set, all newly-created
+	// tables in the dataset will have an expirationTime property set to the
+	// creation time plus the value in this property, and changing the value
+	// will only affect new tables, not existing ones. When the
+	// expirationTime for a given table is reached, that table will be
+	// deleted automatically. If a table's expirationTime is modified or
+	// removed before the table expires, or if you provide an explicit
+	// expirationTime when creating a table, that value takes precedence
+	// over the default expiration time indicated by this property.
+	DefaultTableExpirationMs int64 `json:"defaultTableExpirationMs,omitempty,string"`
 
 	// Description: [Optional] A user-friendly description of the dataset.
 	Description string `json:"description,omitempty"`
@@ -170,6 +242,10 @@ type Dataset struct {
 	// LastModifiedTime: [Output-only] The date when this dataset or any of
 	// its tables was last modified, in milliseconds since the epoch.
 	LastModifiedTime int64 `json:"lastModifiedTime,omitempty,string"`
+
+	// Location: [Experimental] The location where the data resides. If not
+	// present, the data will be stored in the US.
+	Location string `json:"location,omitempty"`
 
 	// SelfLink: [Output-only] A URL that can be used to access the resource
 	// again. You can use this URL in Get or Update requests to the
@@ -202,6 +278,13 @@ type DatasetAccess struct {
 	// UserByEmail: [Pick one] An email address of a user to grant access
 	// to. For example: fred@example.com.
 	UserByEmail string `json:"userByEmail,omitempty"`
+
+	// View: [Pick one] A view from a different dataset to grant access to.
+	// Queries executed against that view will have read access to tables in
+	// this dataset. The role field is not required when this field is set.
+	// If that view is updated by any user, access to the view needs to be
+	// granted again via an update operation.
+	View *TableReference `json:"view,omitempty"`
 }
 
 type DatasetList struct {
@@ -242,10 +325,11 @@ type DatasetListDatasets struct {
 
 type DatasetReference struct {
 	// DatasetId: [Required] A unique ID for this dataset, without the
-	// project name.
+	// project name. The ID must contain only letters (a-z, A-Z), numbers
+	// (0-9), or underscores (_). The maximum length is 1,024 characters.
 	DatasetId string `json:"datasetId,omitempty"`
 
-	// ProjectId: [Optional] The ID of the container project.
+	// ProjectId: [Optional] The ID of the project containing this dataset.
 	ProjectId string `json:"projectId,omitempty"`
 }
 
@@ -262,6 +346,45 @@ type ErrorProto struct {
 
 	// Reason: A short error code that summarizes the error.
 	Reason string `json:"reason,omitempty"`
+}
+
+type ExternalDataConfiguration struct {
+	// Compression: [Optional] The compression type of the data source.
+	// Possible values include GZIP and NONE. The default value is NONE.
+	Compression string `json:"compression,omitempty"`
+
+	// CsvOptions: Additional properties to set if sourceFormat is set to
+	// CSV.
+	CsvOptions *CsvOptions `json:"csvOptions,omitempty"`
+
+	// IgnoreUnknownValues: [Optional] Indicates if BigQuery should allow
+	// extra values that are not represented in the table schema. If true,
+	// the extra values are ignored. If false, records with extra columns
+	// are treated as bad records, and if there are too many bad records, an
+	// invalid error is returned in the job result. The default value is
+	// false. The sourceFormat property determines what BigQuery treats as
+	// an extra value: CSV: Trailing columns
+	IgnoreUnknownValues bool `json:"ignoreUnknownValues,omitempty"`
+
+	// MaxBadRecords: [Optional] The maximum number of bad records that
+	// BigQuery can ignore when reading data. If the number of bad records
+	// exceeds this value, an invalid error is returned in the job result.
+	// The default value is 0, which requires that all records are valid.
+	MaxBadRecords int64 `json:"maxBadRecords,omitempty"`
+
+	// Schema: [Required] The schema for the data.
+	Schema *TableSchema `json:"schema,omitempty"`
+
+	// SourceFormat: [Optional] The data format. External data sources must
+	// be in CSV format. The default value is CSV.
+	SourceFormat string `json:"sourceFormat,omitempty"`
+
+	// SourceUris: [Required] The fully-qualified URIs that point to your
+	// data in Google Cloud Storage. Each URI can contain one '*' wildcard
+	// character and it must come after the 'bucket' name. CSV limits
+	// related to load jobs apply to external data sources, plus an
+	// additional limit of 10 GB maximum size across all URIs.
+	SourceUris []string `json:"sourceUris,omitempty"`
 }
 
 type GetQueryResultsResponse struct {
@@ -300,6 +423,10 @@ type GetQueryResultsResponse struct {
 	// completes successfully.
 	Schema *TableSchema `json:"schema,omitempty"`
 
+	// TotalBytesProcessed: The total number of bytes processed for this
+	// query.
+	TotalBytesProcessed int64 `json:"totalBytesProcessed,omitempty,string"`
+
 	// TotalRows: The total number of rows in the complete query result set,
 	// which can be more than the number of rows in this single page of
 	// results. Present only when the query completes successfully.
@@ -334,6 +461,17 @@ type Job struct {
 	// Status: [Output-only] The status of this job. Examine this value when
 	// polling an asynchronous job to see if the job is complete.
 	Status *JobStatus `json:"status,omitempty"`
+
+	// UserEmail: [Output-only] Email address of the user who ran the job.
+	UserEmail string `json:"user_email,omitempty"`
+}
+
+type JobCancelResponse struct {
+	// Job: The final state of the job.
+	Job *Job `json:"job,omitempty"`
+
+	// Kind: The resource type of the response.
+	Kind string `json:"kind,omitempty"`
 }
 
 type JobConfiguration struct {
@@ -360,11 +498,15 @@ type JobConfiguration struct {
 }
 
 type JobConfigurationExtract struct {
-	// DestinationFormat: [Experimental] Optional and defaults to CSV.
-	// Format with which files should be exported. To export to CSV, specify
-	// "CSV". Tables with nested or repeated fields cannot be exported as
-	// CSV. To export to newline-delimited JSON, specify
-	// "NEWLINE_DELIMITED_JSON".
+	// Compression: [Optional] The compression type to use for exported
+	// files. Possible values include GZIP and NONE. The default value is
+	// NONE.
+	Compression string `json:"compression,omitempty"`
+
+	// DestinationFormat: [Optional] The exported file format. Possible
+	// values include CSV, NEWLINE_DELIMITED_JSON and AVRO. The default
+	// value is CSV. Tables with nested or repeated fields cannot be
+	// exported as CSV.
 	DestinationFormat string `json:"destinationFormat,omitempty"`
 
 	// DestinationUri: [Pick one] DEPRECATED: Use destinationUris instead,
@@ -382,7 +524,9 @@ type JobConfigurationExtract struct {
 
 	// PrintHeader: [Optional] Whether to print out a header row in the
 	// results. Default is true.
-	PrintHeader bool `json:"printHeader,omitempty"`
+	//
+	// Default: true
+	PrintHeader *bool `json:"printHeader,omitempty"`
 
 	// SourceTable: [Required] A reference to the table being exported.
 	SourceTable *TableReference `json:"sourceTable,omitempty"`
@@ -419,8 +563,10 @@ type JobConfigurationLink struct {
 
 type JobConfigurationLoad struct {
 	// AllowJaggedRows: [Optional] Accept rows that are missing trailing
-	// optional columns. The missing values are treated as nulls. Default is
-	// false which treats short rows as errors. Only applicable to CSV,
+	// optional columns. The missing values are treated as nulls. If false,
+	// records with missing trailing columns are treated as bad records, and
+	// if there are too many bad records, an invalid error is returned in
+	// the job result. The default value is false. Only applicable to CSV,
 	// ignored for other formats.
 	AllowJaggedRows bool `json:"allowJaggedRows,omitempty"`
 
@@ -455,19 +601,31 @@ type JobConfigurationLoad struct {
 	// specify a tab separator. The default value is a comma (',').
 	FieldDelimiter string `json:"fieldDelimiter,omitempty"`
 
-	// IgnoreUnknownValues: [Optional] Accept rows that contain values that
-	// do not match the schema. The unknown values are ignored. Default is
-	// false which treats unknown values as errors. For CSV this ignores
-	// extra values at the end of a line. For JSON this ignores named values
-	// that do not match any column name.
+	// IgnoreUnknownValues: [Optional] Indicates if BigQuery should allow
+	// extra values that are not represented in the table schema. If true,
+	// the extra values are ignored. If false, records with extra columns
+	// are treated as bad records, and if there are too many bad records, an
+	// invalid error is returned in the job result. The default value is
+	// false. The sourceFormat property determines what BigQuery treats as
+	// an extra value: CSV: Trailing columns JSON: Named values that don't
+	// match any column names
 	IgnoreUnknownValues bool `json:"ignoreUnknownValues,omitempty"`
 
 	// MaxBadRecords: [Optional] The maximum number of bad records that
 	// BigQuery can ignore when running the job. If the number of bad
-	// records exceeds this value, an 'invalid' error is returned in the job
-	// result and the job fails. The default value is 0, which requires that
-	// all records are valid.
+	// records exceeds this value, an invalid error is returned in the job
+	// result. The default value is 0, which requires that all records are
+	// valid.
 	MaxBadRecords int64 `json:"maxBadRecords,omitempty"`
+
+	// ProjectionFields: [Experimental] If sourceFormat is set to
+	// "DATASTORE_BACKUP", indicates which entity properties to load into
+	// BigQuery from a Cloud Datastore backup. Property names are case
+	// sensitive and must be top-level properties. If no properties are
+	// specified, BigQuery loads all properties. If any named property isn't
+	// found in the Cloud Datastore backup, an invalid error is returned in
+	// the job result.
+	ProjectionFields []string `json:"projectionFields,omitempty"`
 
 	// Quote: [Optional] The value that is used to quote data sections in a
 	// CSV file. BigQuery converts the string to ISO-8859-1 encoding, and
@@ -476,7 +634,9 @@ type JobConfigurationLoad struct {
 	// your data does not contain quoted sections, set the property value to
 	// an empty string. If your data contains quoted newline characters, you
 	// must also set the allowQuotedNewlines property to true.
-	Quote string `json:"quote,omitempty"`
+	//
+	// Default: "
+	Quote *string `json:"quote,omitempty"`
 
 	// Schema: [Optional] The schema for the destination table. The schema
 	// can be omitted if the destination table already exists or if the
@@ -505,7 +665,8 @@ type JobConfigurationLoad struct {
 	SourceFormat string `json:"sourceFormat,omitempty"`
 
 	// SourceUris: [Required] The fully-qualified URIs that point to your
-	// data on Google Cloud Storage.
+	// data in Google Cloud Storage. Each URI can contain one '*' wildcard
+	// character and it must come after the 'bucket' name.
 	SourceUris []string `json:"sourceUris,omitempty"`
 
 	// WriteDisposition: [Optional] Specifies the action that occurs if the
@@ -514,7 +675,7 @@ type JobConfigurationLoad struct {
 	// table data. WRITE_APPEND: If the table already exists, BigQuery
 	// appends the data to the table. WRITE_EMPTY: If the table already
 	// exists and contains data, a 'duplicate' error is returned in the job
-	// result. The default value is WRITE_EMPTY. Each action is atomic and
+	// result. The default value is WRITE_APPEND. Each action is atomic and
 	// only occurs if BigQuery is able to complete the job successfully.
 	// Creation, truncation and append actions occur as one atomic update
 	// upon job completion.
@@ -524,7 +685,7 @@ type JobConfigurationLoad struct {
 type JobConfigurationQuery struct {
 	// AllowLargeResults: If true, allows the query to produce arbitrarily
 	// large result tables at a slight cost in performance. Requires
-	// destination_table to be set.
+	// destinationTable to be set.
 	AllowLargeResults bool `json:"allowLargeResults,omitempty"`
 
 	// CreateDisposition: [Optional] Specifies whether the job is allowed to
@@ -545,6 +706,13 @@ type JobConfigurationQuery struct {
 	// to store the results.
 	DestinationTable *TableReference `json:"destinationTable,omitempty"`
 
+	// FlattenResults: [Optional] Flattens all nested and repeated fields in
+	// the query results. The default value is true. allowLargeResults must
+	// be true if this is set to false.
+	//
+	// Default: true
+	FlattenResults *bool `json:"flattenResults,omitempty"`
+
 	// PreserveNulls: [Deprecated] This property is deprecated.
 	PreserveNulls bool `json:"preserveNulls,omitempty"`
 
@@ -556,12 +724,24 @@ type JobConfigurationQuery struct {
 	// Query: [Required] BigQuery SQL query to execute.
 	Query string `json:"query,omitempty"`
 
+	// TableDefinitions: [Experimental] If querying an external data source
+	// outside of BigQuery, describes the data format, location and other
+	// properties of the data source. By defining these properties, the data
+	// source can then be queried as if it were a standard BigQuery table.
+	TableDefinitions map[string]ExternalDataConfiguration `json:"tableDefinitions,omitempty"`
+
 	// UseQueryCache: [Optional] Whether to look for the result in the query
 	// cache. The query cache is a best-effort cache that will be flushed
 	// whenever tables in the query are modified. Moreover, the query cache
 	// is only available when a query does not have a destination table
-	// specified.
-	UseQueryCache bool `json:"useQueryCache,omitempty"`
+	// specified. The default value is true.
+	//
+	// Default: true
+	UseQueryCache *bool `json:"useQueryCache,omitempty"`
+
+	// UserDefinedFunctionResources: [Experimental] Describes user-defined
+	// function resources used in the query.
+	UserDefinedFunctionResources []*UserDefinedFunctionResource `json:"userDefinedFunctionResources,omitempty"`
 
 	// WriteDisposition: [Optional] Specifies the action that occurs if the
 	// destination table already exists. The following values are supported:
@@ -589,8 +769,11 @@ type JobConfigurationTableCopy struct {
 	// DestinationTable: [Required] The destination table
 	DestinationTable *TableReference `json:"destinationTable,omitempty"`
 
-	// SourceTable: [Required] Source table to copy.
+	// SourceTable: [Pick one] Source table to copy.
 	SourceTable *TableReference `json:"sourceTable,omitempty"`
+
+	// SourceTables: [Pick one] Source tables to copy.
+	SourceTables []*TableReference `json:"sourceTables,omitempty"`
 
 	// WriteDisposition: [Optional] Specifies the action that occurs if the
 	// destination table already exists. The following values are supported:
@@ -617,9 +800,6 @@ type JobList struct {
 
 	// NextPageToken: A token to request the next page of results.
 	NextPageToken string `json:"nextPageToken,omitempty"`
-
-	// TotalItems: Total number of jobs in this collection.
-	TotalItems int64 `json:"totalItems,omitempty"`
 }
 
 type JobListJobs struct {
@@ -651,15 +831,18 @@ type JobListJobs struct {
 	// Status: [Full-projection-only] Describes the state of the job.
 	Status *JobStatus `json:"status,omitempty"`
 
-	// User_email: [Full-projection-only] User who ran the job.
-	User_email string `json:"user_email,omitempty"`
+	// UserEmail: [Full-projection-only] Email address of the user who ran
+	// the job.
+	UserEmail string `json:"user_email,omitempty"`
 }
 
 type JobReference struct {
-	// JobId: [Required] ID of the job.
+	// JobId: [Required] The ID of the job. The ID must contain only letters
+	// (a-z, A-Z), numbers (0-9), underscores (_), or dashes (-). The
+	// maximum length is 1,024 characters.
 	JobId string `json:"jobId,omitempty"`
 
-	// ProjectId: [Required] Project ID being billed for the job.
+	// ProjectId: [Required] The ID of the project containing this job.
 	ProjectId string `json:"projectId,omitempty"`
 }
 
@@ -672,6 +855,9 @@ type JobStatistics struct {
 	// the epoch. This field will be present whenever a job is in the DONE
 	// state.
 	EndTime int64 `json:"endTime,omitempty,string"`
+
+	// Extract: [Output-only] Statistics for an extract job.
+	Extract *JobStatistics4 `json:"extract,omitempty"`
 
 	// Load: [Output-only] Statistics for a load job.
 	Load *JobStatistics3 `json:"load,omitempty"`
@@ -718,6 +904,14 @@ type JobStatistics3 struct {
 	OutputRows int64 `json:"outputRows,omitempty,string"`
 }
 
+type JobStatistics4 struct {
+	// DestinationUriFileCounts: [Experimental] Number of files per
+	// destination URI or URI pattern specified in the extract
+	// configuration. These values will be in the same order as the URIs
+	// specified in the 'destinationUris' field.
+	DestinationUriFileCounts googleapi.Int64s `json:"destinationUriFileCounts,omitempty"`
+}
+
 type JobStatus struct {
 	// ErrorResult: [Output-only] Final error result of the job. If present,
 	// indicates that the job has completed and was unsuccessful.
@@ -732,8 +926,7 @@ type JobStatus struct {
 	State string `json:"state,omitempty"`
 }
 
-type JsonObject struct {
-}
+type JsonValue interface{}
 
 type ProjectList struct {
 	// Etag: A hash of the page of results
@@ -782,10 +975,10 @@ type QueryRequest struct {
 	// format 'datasetId.tableId'.
 	DefaultDataset *DatasetReference `json:"defaultDataset,omitempty"`
 
-	// DryRun: [Optional] If set, don't actually run the query. A valid
-	// query will return an empty response, while an invalid query will
-	// return the same error it would if it wasn't a dry run. The default
-	// value is false.
+	// DryRun: [Optional] If set, don't actually run this job. A valid query
+	// will return a mostly empty response with some processing statistics,
+	// while an invalid query will return the same error it would if it
+	// wasn't a dry run.
 	DryRun bool `json:"dryRun,omitempty"`
 
 	// Kind: The resource type of the request.
@@ -799,11 +992,7 @@ type QueryRequest struct {
 	// only the byte limit applies.
 	MaxResults int64 `json:"maxResults,omitempty"`
 
-	// PreserveNulls: [Deprecated] If set to false, maps null values in the
-	// query response to the column's default value. Only specify if you
-	// have older code that can not handle null values in the query
-	// response. The default value is true. This flag is deprecated and will
-	// be ignored in a future version of BigQuery.
+	// PreserveNulls: [Deprecated] This property is deprecated.
 	PreserveNulls bool `json:"preserveNulls,omitempty"`
 
 	// Query: [Required] A query string, following the BigQuery query
@@ -823,7 +1012,9 @@ type QueryRequest struct {
 	// UseQueryCache: [Optional] Whether to look for the result in the query
 	// cache. The query cache is a best-effort cache that will be flushed
 	// whenever tables in the query are modified. The default value is true.
-	UseQueryCache bool `json:"useQueryCache,omitempty"`
+	//
+	// Default: true
+	UseQueryCache *bool `json:"useQueryCache,omitempty"`
 }
 
 type QueryResponse struct {
@@ -897,12 +1088,19 @@ type Table struct {
 
 	// LastModifiedTime: [Output-only] The time when this table was last
 	// modified, in milliseconds since the epoch.
-	LastModifiedTime int64 `json:"lastModifiedTime,omitempty,string"`
+	LastModifiedTime uint64 `json:"lastModifiedTime,omitempty,string"`
 
-	// NumBytes: [Output-only] The size of the table in bytes.
+	// Location: [Optional] The backing storage location.
+	Location string `json:"location,omitempty"`
+
+	// NumBytes: [Output-only] The size of the table in bytes. This property
+	// is unavailable for tables that are actively receiving streaming
+	// inserts.
 	NumBytes int64 `json:"numBytes,omitempty,string"`
 
-	// NumRows: [Output-only] The number of rows of data in this table.
+	// NumRows: [Output-only] The number of rows of data in this table. This
+	// property is unavailable for tables that are actively receiving
+	// streaming inserts.
 	NumRows uint64 `json:"numRows,omitempty,string"`
 
 	// Schema: [Optional] Describes the schema of this table.
@@ -929,11 +1127,21 @@ type TableCell struct {
 }
 
 type TableDataInsertAllRequest struct {
+	// IgnoreUnknownValues: [Optional] Accept rows that contain values that
+	// do not match the schema. The unknown values are ignored. Default is
+	// false, which treats unknown values as errors.
+	IgnoreUnknownValues bool `json:"ignoreUnknownValues,omitempty"`
+
 	// Kind: The resource type of the response.
 	Kind string `json:"kind,omitempty"`
 
 	// Rows: The rows to insert.
 	Rows []*TableDataInsertAllRequestRows `json:"rows,omitempty"`
+
+	// SkipInvalidRows: [Optional] Insert all valid rows of a request, even
+	// if invalid rows exist. The default value is false, which causes the
+	// entire request to fail if any invalid rows exist.
+	SkipInvalidRows bool `json:"skipInvalidRows,omitempty"`
 }
 
 type TableDataInsertAllRequestRows struct {
@@ -945,7 +1153,7 @@ type TableDataInsertAllRequestRows struct {
 	// Json: [Required] A JSON object that contains a row of data. The
 	// object's properties and values must match the destination table's
 	// schema.
-	Json interface{} `json:"json,omitempty"`
+	Json map[string]JsonValue `json:"json,omitempty"`
 }
 
 type TableDataInsertAllResponse struct {
@@ -985,7 +1193,8 @@ type TableDataList struct {
 }
 
 type TableFieldSchema struct {
-	// Description: [Optional] The field description.
+	// Description: [Optional] The field description. The maximum length is
+	// 16K characters.
 	Description string `json:"description,omitempty"`
 
 	// Fields: [Optional] Describes the nested schema fields if the type
@@ -996,7 +1205,9 @@ type TableFieldSchema struct {
 	// REQUIRED and REPEATED. The default value is NULLABLE.
 	Mode string `json:"mode,omitempty"`
 
-	// Name: [Required] The field name.
+	// Name: [Required] The field name. The name must contain only letters
+	// (a-z, A-Z), numbers (0-9), or underscores (_), and must start with a
+	// letter or underscore. The maximum length is 128 characters.
 	Name string `json:"name,omitempty"`
 
 	// Type: [Required] The field data type. Possible values include STRING,
@@ -1040,24 +1251,38 @@ type TableListTables struct {
 }
 
 type TableReference struct {
-	// DatasetId: [Required] ID of the dataset containing the table.
+	// DatasetId: [Required] The ID of the dataset containing this table.
 	DatasetId string `json:"datasetId,omitempty"`
 
-	// ProjectId: [Required] ID of the project billed for storage of the
-	// table.
+	// ProjectId: [Required] The ID of the project containing this table.
 	ProjectId string `json:"projectId,omitempty"`
 
-	// TableId: [Required] ID of the table.
+	// TableId: [Required] The ID of the table. The ID must contain only
+	// letters (a-z, A-Z), numbers (0-9), or underscores (_). The maximum
+	// length is 1,024 characters.
 	TableId string `json:"tableId,omitempty"`
 }
 
 type TableRow struct {
+	// F: Represents a single row in the result set, consisting of one or
+	// more fields.
 	F []*TableCell `json:"f,omitempty"`
 }
 
 type TableSchema struct {
 	// Fields: Describes the fields in a table.
 	Fields []*TableFieldSchema `json:"fields,omitempty"`
+}
+
+type UserDefinedFunctionResource struct {
+	// InlineCode: [Pick one] An inline resource that contains code for a
+	// user-defined function (UDF). Providing a inline code resource is
+	// equivalent to providing a URI for a file containing the same code.
+	InlineCode string `json:"inlineCode,omitempty"`
+
+	// ResourceUri: [Pick one] A code resource to load from a Google Cloud
+	// Storage URI (gs://bucket/path).
+	ResourceUri string `json:"resourceUri,omitempty"`
 }
 
 type ViewDefinition struct {
@@ -1094,6 +1319,14 @@ func (c *DatasetsDeleteCall) DeleteContents(deleteContents bool) *DatasetsDelete
 	return c
 }
 
+// Fields allows partial responses to be retrieved.
+// See https://developers.google.com/gdata/docs/2.0/basics#PartialResponse
+// for more information.
+func (c *DatasetsDeleteCall) Fields(s ...googleapi.Field) *DatasetsDeleteCall {
+	c.opt_["fields"] = googleapi.CombineFields(s)
+	return c
+}
+
 func (c *DatasetsDeleteCall) Do() error {
 	var body io.Reader = nil
 	params := make(url.Values)
@@ -1101,13 +1334,17 @@ func (c *DatasetsDeleteCall) Do() error {
 	if v, ok := c.opt_["deleteContents"]; ok {
 		params.Set("deleteContents", fmt.Sprintf("%v", v))
 	}
+	if v, ok := c.opt_["fields"]; ok {
+		params.Set("fields", fmt.Sprintf("%v", v))
+	}
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{projectId}/datasets/{datasetId}")
 	urls += "?" + params.Encode()
 	req, _ := http.NewRequest("DELETE", urls, body)
-	req.URL.Path = strings.Replace(req.URL.Path, "{projectId}", url.QueryEscape(c.projectId), 1)
-	req.URL.Path = strings.Replace(req.URL.Path, "{datasetId}", url.QueryEscape(c.datasetId), 1)
-	googleapi.SetOpaque(req.URL)
-	req.Header.Set("User-Agent", "google-api-go-client/0.5")
+	googleapi.Expand(req.URL, map[string]string{
+		"projectId": c.projectId,
+		"datasetId": c.datasetId,
+	})
+	req.Header.Set("User-Agent", c.s.userAgent())
 	res, err := c.s.client.Do(req)
 	if err != nil {
 		return err
@@ -1170,17 +1407,29 @@ func (r *DatasetsService) Get(projectId string, datasetId string) *DatasetsGetCa
 	return c
 }
 
+// Fields allows partial responses to be retrieved.
+// See https://developers.google.com/gdata/docs/2.0/basics#PartialResponse
+// for more information.
+func (c *DatasetsGetCall) Fields(s ...googleapi.Field) *DatasetsGetCall {
+	c.opt_["fields"] = googleapi.CombineFields(s)
+	return c
+}
+
 func (c *DatasetsGetCall) Do() (*Dataset, error) {
 	var body io.Reader = nil
 	params := make(url.Values)
 	params.Set("alt", "json")
+	if v, ok := c.opt_["fields"]; ok {
+		params.Set("fields", fmt.Sprintf("%v", v))
+	}
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{projectId}/datasets/{datasetId}")
 	urls += "?" + params.Encode()
 	req, _ := http.NewRequest("GET", urls, body)
-	req.URL.Path = strings.Replace(req.URL.Path, "{projectId}", url.QueryEscape(c.projectId), 1)
-	req.URL.Path = strings.Replace(req.URL.Path, "{datasetId}", url.QueryEscape(c.datasetId), 1)
-	googleapi.SetOpaque(req.URL)
-	req.Header.Set("User-Agent", "google-api-go-client/0.5")
+	googleapi.Expand(req.URL, map[string]string{
+		"projectId": c.projectId,
+		"datasetId": c.datasetId,
+	})
+	req.Header.Set("User-Agent", c.s.userAgent())
 	res, err := c.s.client.Do(req)
 	if err != nil {
 		return nil, err
@@ -1189,8 +1438,8 @@ func (c *DatasetsGetCall) Do() (*Dataset, error) {
 	if err := googleapi.CheckResponse(res); err != nil {
 		return nil, err
 	}
-	ret := new(Dataset)
-	if err := json.NewDecoder(res.Body).Decode(ret); err != nil {
+	var ret *Dataset
+	if err := json.NewDecoder(res.Body).Decode(&ret); err != nil {
 		return nil, err
 	}
 	return ret, nil
@@ -1245,6 +1494,14 @@ func (r *DatasetsService) Insert(projectId string, dataset *Dataset) *DatasetsIn
 	return c
 }
 
+// Fields allows partial responses to be retrieved.
+// See https://developers.google.com/gdata/docs/2.0/basics#PartialResponse
+// for more information.
+func (c *DatasetsInsertCall) Fields(s ...googleapi.Field) *DatasetsInsertCall {
+	c.opt_["fields"] = googleapi.CombineFields(s)
+	return c
+}
+
 func (c *DatasetsInsertCall) Do() (*Dataset, error) {
 	var body io.Reader = nil
 	body, err := googleapi.WithoutDataWrapper.JSONReader(c.dataset)
@@ -1254,13 +1511,17 @@ func (c *DatasetsInsertCall) Do() (*Dataset, error) {
 	ctype := "application/json"
 	params := make(url.Values)
 	params.Set("alt", "json")
+	if v, ok := c.opt_["fields"]; ok {
+		params.Set("fields", fmt.Sprintf("%v", v))
+	}
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{projectId}/datasets")
 	urls += "?" + params.Encode()
 	req, _ := http.NewRequest("POST", urls, body)
-	req.URL.Path = strings.Replace(req.URL.Path, "{projectId}", url.QueryEscape(c.projectId), 1)
-	googleapi.SetOpaque(req.URL)
+	googleapi.Expand(req.URL, map[string]string{
+		"projectId": c.projectId,
+	})
 	req.Header.Set("Content-Type", ctype)
-	req.Header.Set("User-Agent", "google-api-go-client/0.5")
+	req.Header.Set("User-Agent", c.s.userAgent())
 	res, err := c.s.client.Do(req)
 	if err != nil {
 		return nil, err
@@ -1269,8 +1530,8 @@ func (c *DatasetsInsertCall) Do() (*Dataset, error) {
 	if err := googleapi.CheckResponse(res); err != nil {
 		return nil, err
 	}
-	ret := new(Dataset)
-	if err := json.NewDecoder(res.Body).Decode(ret); err != nil {
+	var ret *Dataset
+	if err := json.NewDecoder(res.Body).Decode(&ret); err != nil {
 		return nil, err
 	}
 	return ret, nil
@@ -1312,9 +1573,8 @@ type DatasetsListCall struct {
 	opt_      map[string]interface{}
 }
 
-// List: Lists all the datasets in the specified project to which the
-// caller has read access; however, a project owner can list (but not
-// necessarily get) all datasets in his project.
+// List: Lists all datasets in the specified project to which you have
+// been granted the READER dataset role.
 func (r *DatasetsService) List(projectId string) *DatasetsListCall {
 	c := &DatasetsListCall{s: r.s, opt_: make(map[string]interface{})}
 	c.projectId = projectId
@@ -1342,6 +1602,14 @@ func (c *DatasetsListCall) PageToken(pageToken string) *DatasetsListCall {
 	return c
 }
 
+// Fields allows partial responses to be retrieved.
+// See https://developers.google.com/gdata/docs/2.0/basics#PartialResponse
+// for more information.
+func (c *DatasetsListCall) Fields(s ...googleapi.Field) *DatasetsListCall {
+	c.opt_["fields"] = googleapi.CombineFields(s)
+	return c
+}
+
 func (c *DatasetsListCall) Do() (*DatasetList, error) {
 	var body io.Reader = nil
 	params := make(url.Values)
@@ -1355,12 +1623,16 @@ func (c *DatasetsListCall) Do() (*DatasetList, error) {
 	if v, ok := c.opt_["pageToken"]; ok {
 		params.Set("pageToken", fmt.Sprintf("%v", v))
 	}
+	if v, ok := c.opt_["fields"]; ok {
+		params.Set("fields", fmt.Sprintf("%v", v))
+	}
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{projectId}/datasets")
 	urls += "?" + params.Encode()
 	req, _ := http.NewRequest("GET", urls, body)
-	req.URL.Path = strings.Replace(req.URL.Path, "{projectId}", url.QueryEscape(c.projectId), 1)
-	googleapi.SetOpaque(req.URL)
-	req.Header.Set("User-Agent", "google-api-go-client/0.5")
+	googleapi.Expand(req.URL, map[string]string{
+		"projectId": c.projectId,
+	})
+	req.Header.Set("User-Agent", c.s.userAgent())
 	res, err := c.s.client.Do(req)
 	if err != nil {
 		return nil, err
@@ -1369,13 +1641,13 @@ func (c *DatasetsListCall) Do() (*DatasetList, error) {
 	if err := googleapi.CheckResponse(res); err != nil {
 		return nil, err
 	}
-	ret := new(DatasetList)
-	if err := json.NewDecoder(res.Body).Decode(ret); err != nil {
+	var ret *DatasetList
+	if err := json.NewDecoder(res.Body).Decode(&ret); err != nil {
 		return nil, err
 	}
 	return ret, nil
 	// {
-	//   "description": "Lists all the datasets in the specified project to which the caller has read access; however, a project owner can list (but not necessarily get) all datasets in his project.",
+	//   "description": "Lists all datasets in the specified project to which you have been granted the READER dataset role.",
 	//   "httpMethod": "GET",
 	//   "id": "bigquery.datasets.list",
 	//   "parameterOrder": [
@@ -1439,6 +1711,14 @@ func (r *DatasetsService) Patch(projectId string, datasetId string, dataset *Dat
 	return c
 }
 
+// Fields allows partial responses to be retrieved.
+// See https://developers.google.com/gdata/docs/2.0/basics#PartialResponse
+// for more information.
+func (c *DatasetsPatchCall) Fields(s ...googleapi.Field) *DatasetsPatchCall {
+	c.opt_["fields"] = googleapi.CombineFields(s)
+	return c
+}
+
 func (c *DatasetsPatchCall) Do() (*Dataset, error) {
 	var body io.Reader = nil
 	body, err := googleapi.WithoutDataWrapper.JSONReader(c.dataset)
@@ -1448,14 +1728,18 @@ func (c *DatasetsPatchCall) Do() (*Dataset, error) {
 	ctype := "application/json"
 	params := make(url.Values)
 	params.Set("alt", "json")
+	if v, ok := c.opt_["fields"]; ok {
+		params.Set("fields", fmt.Sprintf("%v", v))
+	}
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{projectId}/datasets/{datasetId}")
 	urls += "?" + params.Encode()
 	req, _ := http.NewRequest("PATCH", urls, body)
-	req.URL.Path = strings.Replace(req.URL.Path, "{projectId}", url.QueryEscape(c.projectId), 1)
-	req.URL.Path = strings.Replace(req.URL.Path, "{datasetId}", url.QueryEscape(c.datasetId), 1)
-	googleapi.SetOpaque(req.URL)
+	googleapi.Expand(req.URL, map[string]string{
+		"projectId": c.projectId,
+		"datasetId": c.datasetId,
+	})
 	req.Header.Set("Content-Type", ctype)
-	req.Header.Set("User-Agent", "google-api-go-client/0.5")
+	req.Header.Set("User-Agent", c.s.userAgent())
 	res, err := c.s.client.Do(req)
 	if err != nil {
 		return nil, err
@@ -1464,8 +1748,8 @@ func (c *DatasetsPatchCall) Do() (*Dataset, error) {
 	if err := googleapi.CheckResponse(res); err != nil {
 		return nil, err
 	}
-	ret := new(Dataset)
-	if err := json.NewDecoder(res.Body).Decode(ret); err != nil {
+	var ret *Dataset
+	if err := json.NewDecoder(res.Body).Decode(&ret); err != nil {
 		return nil, err
 	}
 	return ret, nil
@@ -1527,6 +1811,14 @@ func (r *DatasetsService) Update(projectId string, datasetId string, dataset *Da
 	return c
 }
 
+// Fields allows partial responses to be retrieved.
+// See https://developers.google.com/gdata/docs/2.0/basics#PartialResponse
+// for more information.
+func (c *DatasetsUpdateCall) Fields(s ...googleapi.Field) *DatasetsUpdateCall {
+	c.opt_["fields"] = googleapi.CombineFields(s)
+	return c
+}
+
 func (c *DatasetsUpdateCall) Do() (*Dataset, error) {
 	var body io.Reader = nil
 	body, err := googleapi.WithoutDataWrapper.JSONReader(c.dataset)
@@ -1536,14 +1828,18 @@ func (c *DatasetsUpdateCall) Do() (*Dataset, error) {
 	ctype := "application/json"
 	params := make(url.Values)
 	params.Set("alt", "json")
+	if v, ok := c.opt_["fields"]; ok {
+		params.Set("fields", fmt.Sprintf("%v", v))
+	}
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{projectId}/datasets/{datasetId}")
 	urls += "?" + params.Encode()
 	req, _ := http.NewRequest("PUT", urls, body)
-	req.URL.Path = strings.Replace(req.URL.Path, "{projectId}", url.QueryEscape(c.projectId), 1)
-	req.URL.Path = strings.Replace(req.URL.Path, "{datasetId}", url.QueryEscape(c.datasetId), 1)
-	googleapi.SetOpaque(req.URL)
+	googleapi.Expand(req.URL, map[string]string{
+		"projectId": c.projectId,
+		"datasetId": c.datasetId,
+	})
 	req.Header.Set("Content-Type", ctype)
-	req.Header.Set("User-Agent", "google-api-go-client/0.5")
+	req.Header.Set("User-Agent", c.s.userAgent())
 	res, err := c.s.client.Do(req)
 	if err != nil {
 		return nil, err
@@ -1552,8 +1848,8 @@ func (c *DatasetsUpdateCall) Do() (*Dataset, error) {
 	if err := googleapi.CheckResponse(res); err != nil {
 		return nil, err
 	}
-	ret := new(Dataset)
-	if err := json.NewDecoder(res.Body).Decode(ret); err != nil {
+	var ret *Dataset
+	if err := json.NewDecoder(res.Body).Decode(&ret); err != nil {
 		return nil, err
 	}
 	return ret, nil
@@ -1594,6 +1890,95 @@ func (c *DatasetsUpdateCall) Do() (*Dataset, error) {
 
 }
 
+// method id "bigquery.jobs.cancel":
+
+type JobsCancelCall struct {
+	s         *Service
+	projectId string
+	jobId     string
+	opt_      map[string]interface{}
+}
+
+// Cancel: Requests that a job be cancelled. This call will return
+// immediately, and the client will need to poll for the job status to
+// see if the cancel completed successfully.
+func (r *JobsService) Cancel(projectId string, jobId string) *JobsCancelCall {
+	c := &JobsCancelCall{s: r.s, opt_: make(map[string]interface{})}
+	c.projectId = projectId
+	c.jobId = jobId
+	return c
+}
+
+// Fields allows partial responses to be retrieved.
+// See https://developers.google.com/gdata/docs/2.0/basics#PartialResponse
+// for more information.
+func (c *JobsCancelCall) Fields(s ...googleapi.Field) *JobsCancelCall {
+	c.opt_["fields"] = googleapi.CombineFields(s)
+	return c
+}
+
+func (c *JobsCancelCall) Do() (*JobCancelResponse, error) {
+	var body io.Reader = nil
+	params := make(url.Values)
+	params.Set("alt", "json")
+	if v, ok := c.opt_["fields"]; ok {
+		params.Set("fields", fmt.Sprintf("%v", v))
+	}
+	urls := googleapi.ResolveRelative(c.s.BasePath, "project/{projectId}/jobs/{jobId}/cancel")
+	urls += "?" + params.Encode()
+	req, _ := http.NewRequest("POST", urls, body)
+	googleapi.Expand(req.URL, map[string]string{
+		"projectId": c.projectId,
+		"jobId":     c.jobId,
+	})
+	req.Header.Set("User-Agent", c.s.userAgent())
+	res, err := c.s.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, err
+	}
+	var ret *JobCancelResponse
+	if err := json.NewDecoder(res.Body).Decode(&ret); err != nil {
+		return nil, err
+	}
+	return ret, nil
+	// {
+	//   "description": "Requests that a job be cancelled. This call will return immediately, and the client will need to poll for the job status to see if the cancel completed successfully.",
+	//   "httpMethod": "POST",
+	//   "id": "bigquery.jobs.cancel",
+	//   "parameterOrder": [
+	//     "projectId",
+	//     "jobId"
+	//   ],
+	//   "parameters": {
+	//     "jobId": {
+	//       "description": "Job ID of the job to cancel",
+	//       "location": "path",
+	//       "required": true,
+	//       "type": "string"
+	//     },
+	//     "projectId": {
+	//       "description": "Project ID of the job to cancel",
+	//       "location": "path",
+	//       "required": true,
+	//       "type": "string"
+	//     }
+	//   },
+	//   "path": "project/{projectId}/jobs/{jobId}/cancel",
+	//   "response": {
+	//     "$ref": "JobCancelResponse"
+	//   },
+	//   "scopes": [
+	//     "https://www.googleapis.com/auth/bigquery",
+	//     "https://www.googleapis.com/auth/cloud-platform"
+	//   ]
+	// }
+
+}
+
 // method id "bigquery.jobs.get":
 
 type JobsGetCall struct {
@@ -1603,7 +1988,9 @@ type JobsGetCall struct {
 	opt_      map[string]interface{}
 }
 
-// Get: Retrieves the specified job by ID.
+// Get: Returns information about a specific job. Job information is
+// available for a six month period after creation. Requires that you're
+// the person who ran the job, or have the Is Owner project role.
 func (r *JobsService) Get(projectId string, jobId string) *JobsGetCall {
 	c := &JobsGetCall{s: r.s, opt_: make(map[string]interface{})}
 	c.projectId = projectId
@@ -1611,17 +1998,29 @@ func (r *JobsService) Get(projectId string, jobId string) *JobsGetCall {
 	return c
 }
 
+// Fields allows partial responses to be retrieved.
+// See https://developers.google.com/gdata/docs/2.0/basics#PartialResponse
+// for more information.
+func (c *JobsGetCall) Fields(s ...googleapi.Field) *JobsGetCall {
+	c.opt_["fields"] = googleapi.CombineFields(s)
+	return c
+}
+
 func (c *JobsGetCall) Do() (*Job, error) {
 	var body io.Reader = nil
 	params := make(url.Values)
 	params.Set("alt", "json")
+	if v, ok := c.opt_["fields"]; ok {
+		params.Set("fields", fmt.Sprintf("%v", v))
+	}
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{projectId}/jobs/{jobId}")
 	urls += "?" + params.Encode()
 	req, _ := http.NewRequest("GET", urls, body)
-	req.URL.Path = strings.Replace(req.URL.Path, "{projectId}", url.QueryEscape(c.projectId), 1)
-	req.URL.Path = strings.Replace(req.URL.Path, "{jobId}", url.QueryEscape(c.jobId), 1)
-	googleapi.SetOpaque(req.URL)
-	req.Header.Set("User-Agent", "google-api-go-client/0.5")
+	googleapi.Expand(req.URL, map[string]string{
+		"projectId": c.projectId,
+		"jobId":     c.jobId,
+	})
+	req.Header.Set("User-Agent", c.s.userAgent())
 	res, err := c.s.client.Do(req)
 	if err != nil {
 		return nil, err
@@ -1630,13 +2029,13 @@ func (c *JobsGetCall) Do() (*Job, error) {
 	if err := googleapi.CheckResponse(res); err != nil {
 		return nil, err
 	}
-	ret := new(Job)
-	if err := json.NewDecoder(res.Body).Decode(ret); err != nil {
+	var ret *Job
+	if err := json.NewDecoder(res.Body).Decode(&ret); err != nil {
 		return nil, err
 	}
 	return ret, nil
 	// {
-	//   "description": "Retrieves the specified job by ID.",
+	//   "description": "Returns information about a specific job. Job information is available for a six month period after creation. Requires that you're the person who ran the job, or have the Is Owner project role.",
 	//   "httpMethod": "GET",
 	//   "id": "bigquery.jobs.get",
 	//   "parameterOrder": [
@@ -1709,10 +2108,18 @@ func (c *JobsGetQueryResultsCall) StartIndex(startIndex uint64) *JobsGetQueryRes
 
 // TimeoutMs sets the optional parameter "timeoutMs": How long to wait
 // for the query to complete, in milliseconds, before returning. Default
-// is to return immediately. If the timeout passes before the job
-// completes, the request will fail with a TIMEOUT error
+// is 10 seconds. If the timeout passes before the job completes, the
+// 'jobComplete' field in the response will be false
 func (c *JobsGetQueryResultsCall) TimeoutMs(timeoutMs int64) *JobsGetQueryResultsCall {
 	c.opt_["timeoutMs"] = timeoutMs
+	return c
+}
+
+// Fields allows partial responses to be retrieved.
+// See https://developers.google.com/gdata/docs/2.0/basics#PartialResponse
+// for more information.
+func (c *JobsGetQueryResultsCall) Fields(s ...googleapi.Field) *JobsGetQueryResultsCall {
+	c.opt_["fields"] = googleapi.CombineFields(s)
 	return c
 }
 
@@ -1732,13 +2139,17 @@ func (c *JobsGetQueryResultsCall) Do() (*GetQueryResultsResponse, error) {
 	if v, ok := c.opt_["timeoutMs"]; ok {
 		params.Set("timeoutMs", fmt.Sprintf("%v", v))
 	}
+	if v, ok := c.opt_["fields"]; ok {
+		params.Set("fields", fmt.Sprintf("%v", v))
+	}
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{projectId}/queries/{jobId}")
 	urls += "?" + params.Encode()
 	req, _ := http.NewRequest("GET", urls, body)
-	req.URL.Path = strings.Replace(req.URL.Path, "{projectId}", url.QueryEscape(c.projectId), 1)
-	req.URL.Path = strings.Replace(req.URL.Path, "{jobId}", url.QueryEscape(c.jobId), 1)
-	googleapi.SetOpaque(req.URL)
-	req.Header.Set("User-Agent", "google-api-go-client/0.5")
+	googleapi.Expand(req.URL, map[string]string{
+		"projectId": c.projectId,
+		"jobId":     c.jobId,
+	})
+	req.Header.Set("User-Agent", c.s.userAgent())
 	res, err := c.s.client.Do(req)
 	if err != nil {
 		return nil, err
@@ -1747,8 +2158,8 @@ func (c *JobsGetQueryResultsCall) Do() (*GetQueryResultsResponse, error) {
 	if err := googleapi.CheckResponse(res); err != nil {
 		return nil, err
 	}
-	ret := new(GetQueryResultsResponse)
-	if err := json.NewDecoder(res.Body).Decode(ret); err != nil {
+	var ret *GetQueryResultsResponse
+	if err := json.NewDecoder(res.Body).Decode(&ret); err != nil {
 		return nil, err
 	}
 	return ret, nil
@@ -1791,7 +2202,7 @@ func (c *JobsGetQueryResultsCall) Do() (*GetQueryResultsResponse, error) {
 	//       "type": "string"
 	//     },
 	//     "timeoutMs": {
-	//       "description": "How long to wait for the query to complete, in milliseconds, before returning. Default is to return immediately. If the timeout passes before the job completes, the request will fail with a TIMEOUT error",
+	//       "description": "How long to wait for the query to complete, in milliseconds, before returning. Default is 10 seconds. If the timeout passes before the job completes, the 'jobComplete' field in the response will be false",
 	//       "format": "uint32",
 	//       "location": "query",
 	//       "type": "integer"
@@ -1812,22 +2223,59 @@ func (c *JobsGetQueryResultsCall) Do() (*GetQueryResultsResponse, error) {
 // method id "bigquery.jobs.insert":
 
 type JobsInsertCall struct {
-	s         *Service
-	projectId string
-	job       *Job
-	opt_      map[string]interface{}
-	media_    io.Reader
+	s          *Service
+	projectId  string
+	job        *Job
+	opt_       map[string]interface{}
+	media_     io.Reader
+	resumable_ googleapi.SizeReaderAt
+	mediaType_ string
+	ctx_       context.Context
+	protocol_  string
 }
 
-// Insert: Starts a new asynchronous job.
+// Insert: Starts a new asynchronous job. Requires the Can View project
+// role.
 func (r *JobsService) Insert(projectId string, job *Job) *JobsInsertCall {
 	c := &JobsInsertCall{s: r.s, opt_: make(map[string]interface{})}
 	c.projectId = projectId
 	c.job = job
 	return c
 }
+
+// Media specifies the media to upload in a single chunk.
+// At most one of Media and ResumableMedia may be set.
 func (c *JobsInsertCall) Media(r io.Reader) *JobsInsertCall {
 	c.media_ = r
+	c.protocol_ = "multipart"
+	return c
+}
+
+// ResumableMedia specifies the media to upload in chunks and can be cancelled with ctx.
+// At most one of Media and ResumableMedia may be set.
+// mediaType identifies the MIME media type of the upload, such as "image/png".
+// If mediaType is "", it will be auto-detected.
+func (c *JobsInsertCall) ResumableMedia(ctx context.Context, r io.ReaderAt, size int64, mediaType string) *JobsInsertCall {
+	c.ctx_ = ctx
+	c.resumable_ = io.NewSectionReader(r, 0, size)
+	c.mediaType_ = mediaType
+	c.protocol_ = "resumable"
+	return c
+}
+
+// ProgressUpdater provides a callback function that will be called after every chunk.
+// It should be a low-latency function in order to not slow down the upload operation.
+// This should only be called when using ResumableMedia (as opposed to Media).
+func (c *JobsInsertCall) ProgressUpdater(pu googleapi.ProgressUpdater) *JobsInsertCall {
+	c.opt_["progressUpdater"] = pu
+	return c
+}
+
+// Fields allows partial responses to be retrieved.
+// See https://developers.google.com/gdata/docs/2.0/basics#PartialResponse
+// for more information.
+func (c *JobsInsertCall) Fields(s ...googleapi.Field) *JobsInsertCall {
+	c.opt_["fields"] = googleapi.CombineFields(s)
 	return c
 }
 
@@ -1840,21 +2288,42 @@ func (c *JobsInsertCall) Do() (*Job, error) {
 	ctype := "application/json"
 	params := make(url.Values)
 	params.Set("alt", "json")
+	if v, ok := c.opt_["fields"]; ok {
+		params.Set("fields", fmt.Sprintf("%v", v))
+	}
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{projectId}/jobs")
-	if c.media_ != nil {
+	var progressUpdater_ googleapi.ProgressUpdater
+	if v, ok := c.opt_["progressUpdater"]; ok {
+		if pu, ok := v.(googleapi.ProgressUpdater); ok {
+			progressUpdater_ = pu
+		}
+	}
+	if c.media_ != nil || c.resumable_ != nil {
 		urls = strings.Replace(urls, "https://www.googleapis.com/", "https://www.googleapis.com/upload/", 1)
-		params.Set("uploadType", "multipart")
+		params.Set("uploadType", c.protocol_)
 	}
 	urls += "?" + params.Encode()
-	contentLength_, hasMedia_ := googleapi.ConditionallyIncludeMedia(c.media_, &body, &ctype)
-	req, _ := http.NewRequest("POST", urls, body)
-	req.URL.Path = strings.Replace(req.URL.Path, "{projectId}", url.QueryEscape(c.projectId), 1)
-	googleapi.SetOpaque(req.URL)
-	if hasMedia_ {
-		req.ContentLength = contentLength_
+	if c.protocol_ != "resumable" {
+		var cancel func()
+		cancel, _ = googleapi.ConditionallyIncludeMedia(c.media_, &body, &ctype)
+		if cancel != nil {
+			defer cancel()
+		}
 	}
-	req.Header.Set("Content-Type", ctype)
-	req.Header.Set("User-Agent", "google-api-go-client/0.5")
+	req, _ := http.NewRequest("POST", urls, body)
+	googleapi.Expand(req.URL, map[string]string{
+		"projectId": c.projectId,
+	})
+	if c.protocol_ == "resumable" {
+		if c.mediaType_ == "" {
+			c.mediaType_ = googleapi.DetectMediaType(c.resumable_)
+		}
+		req.Header.Set("X-Upload-Content-Type", c.mediaType_)
+		req.Header.Set("Content-Type", "application/json; charset=utf-8")
+	} else {
+		req.Header.Set("Content-Type", ctype)
+	}
+	req.Header.Set("User-Agent", c.s.userAgent())
 	res, err := c.s.client.Do(req)
 	if err != nil {
 		return nil, err
@@ -1863,13 +2332,30 @@ func (c *JobsInsertCall) Do() (*Job, error) {
 	if err := googleapi.CheckResponse(res); err != nil {
 		return nil, err
 	}
-	ret := new(Job)
-	if err := json.NewDecoder(res.Body).Decode(ret); err != nil {
+	if c.protocol_ == "resumable" {
+		loc := res.Header.Get("Location")
+		rx := &googleapi.ResumableUpload{
+			Client:        c.s.client,
+			UserAgent:     c.s.userAgent(),
+			URI:           loc,
+			Media:         c.resumable_,
+			MediaType:     c.mediaType_,
+			ContentLength: c.resumable_.Size(),
+			Callback:      progressUpdater_,
+		}
+		res, err = rx.Upload(c.ctx_)
+		if err != nil {
+			return nil, err
+		}
+		defer res.Body.Close()
+	}
+	var ret *Job
+	if err := json.NewDecoder(res.Body).Decode(&ret); err != nil {
 		return nil, err
 	}
 	return ret, nil
 	// {
-	//   "description": "Starts a new asynchronous job.",
+	//   "description": "Starts a new asynchronous job. Requires the Can View project role.",
 	//   "httpMethod": "POST",
 	//   "id": "bigquery.jobs.insert",
 	//   "mediaUpload": {
@@ -1925,8 +2411,11 @@ type JobsListCall struct {
 	opt_      map[string]interface{}
 }
 
-// List: Lists all the Jobs in the specified project that were started
-// by the user.
+// List: Lists all jobs that you started in the specified project. The
+// job list returns in reverse chronological order of when the jobs were
+// created, starting with the most recent job created. Requires the Can
+// View project role, or the Is Owner project role if you set the
+// allUsers property.
 func (r *JobsService) List(projectId string) *JobsListCall {
 	c := &JobsListCall{s: r.s, opt_: make(map[string]interface{})}
 	c.projectId = projectId
@@ -1956,6 +2445,10 @@ func (c *JobsListCall) PageToken(pageToken string) *JobsListCall {
 
 // Projection sets the optional parameter "projection": Restrict
 // information returned to a set of selected fields
+//
+// Possible values:
+//   "full" - Includes all job data
+//   "minimal" - Does not include the job configuration
 func (c *JobsListCall) Projection(projection string) *JobsListCall {
 	c.opt_["projection"] = projection
 	return c
@@ -1963,8 +2456,21 @@ func (c *JobsListCall) Projection(projection string) *JobsListCall {
 
 // StateFilter sets the optional parameter "stateFilter": Filter for job
 // state
+//
+// Possible values:
+//   "done" - Finished jobs
+//   "pending" - Pending jobs
+//   "running" - Running jobs
 func (c *JobsListCall) StateFilter(stateFilter string) *JobsListCall {
 	c.opt_["stateFilter"] = stateFilter
+	return c
+}
+
+// Fields allows partial responses to be retrieved.
+// See https://developers.google.com/gdata/docs/2.0/basics#PartialResponse
+// for more information.
+func (c *JobsListCall) Fields(s ...googleapi.Field) *JobsListCall {
+	c.opt_["fields"] = googleapi.CombineFields(s)
 	return c
 }
 
@@ -1987,12 +2493,16 @@ func (c *JobsListCall) Do() (*JobList, error) {
 	if v, ok := c.opt_["stateFilter"]; ok {
 		params.Set("stateFilter", fmt.Sprintf("%v", v))
 	}
+	if v, ok := c.opt_["fields"]; ok {
+		params.Set("fields", fmt.Sprintf("%v", v))
+	}
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{projectId}/jobs")
 	urls += "?" + params.Encode()
 	req, _ := http.NewRequest("GET", urls, body)
-	req.URL.Path = strings.Replace(req.URL.Path, "{projectId}", url.QueryEscape(c.projectId), 1)
-	googleapi.SetOpaque(req.URL)
-	req.Header.Set("User-Agent", "google-api-go-client/0.5")
+	googleapi.Expand(req.URL, map[string]string{
+		"projectId": c.projectId,
+	})
+	req.Header.Set("User-Agent", c.s.userAgent())
 	res, err := c.s.client.Do(req)
 	if err != nil {
 		return nil, err
@@ -2001,13 +2511,13 @@ func (c *JobsListCall) Do() (*JobList, error) {
 	if err := googleapi.CheckResponse(res); err != nil {
 		return nil, err
 	}
-	ret := new(JobList)
-	if err := json.NewDecoder(res.Body).Decode(ret); err != nil {
+	var ret *JobList
+	if err := json.NewDecoder(res.Body).Decode(&ret); err != nil {
 		return nil, err
 	}
 	return ret, nil
 	// {
-	//   "description": "Lists all the Jobs in the specified project that were started by the user.",
+	//   "description": "Lists all jobs that you started in the specified project. The job list returns in reverse chronological order of when the jobs were created, starting with the most recent job created. Requires the Can View project role, or the Is Owner project role if you set the allUsers property.",
 	//   "httpMethod": "GET",
 	//   "id": "bigquery.jobs.list",
 	//   "parameterOrder": [
@@ -2096,6 +2606,14 @@ func (r *JobsService) Query(projectId string, queryrequest *QueryRequest) *JobsQ
 	return c
 }
 
+// Fields allows partial responses to be retrieved.
+// See https://developers.google.com/gdata/docs/2.0/basics#PartialResponse
+// for more information.
+func (c *JobsQueryCall) Fields(s ...googleapi.Field) *JobsQueryCall {
+	c.opt_["fields"] = googleapi.CombineFields(s)
+	return c
+}
+
 func (c *JobsQueryCall) Do() (*QueryResponse, error) {
 	var body io.Reader = nil
 	body, err := googleapi.WithoutDataWrapper.JSONReader(c.queryrequest)
@@ -2105,13 +2623,17 @@ func (c *JobsQueryCall) Do() (*QueryResponse, error) {
 	ctype := "application/json"
 	params := make(url.Values)
 	params.Set("alt", "json")
+	if v, ok := c.opt_["fields"]; ok {
+		params.Set("fields", fmt.Sprintf("%v", v))
+	}
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{projectId}/queries")
 	urls += "?" + params.Encode()
 	req, _ := http.NewRequest("POST", urls, body)
-	req.URL.Path = strings.Replace(req.URL.Path, "{projectId}", url.QueryEscape(c.projectId), 1)
-	googleapi.SetOpaque(req.URL)
+	googleapi.Expand(req.URL, map[string]string{
+		"projectId": c.projectId,
+	})
 	req.Header.Set("Content-Type", ctype)
-	req.Header.Set("User-Agent", "google-api-go-client/0.5")
+	req.Header.Set("User-Agent", c.s.userAgent())
 	res, err := c.s.client.Do(req)
 	if err != nil {
 		return nil, err
@@ -2120,8 +2642,8 @@ func (c *JobsQueryCall) Do() (*QueryResponse, error) {
 	if err := googleapi.CheckResponse(res); err != nil {
 		return nil, err
 	}
-	ret := new(QueryResponse)
-	if err := json.NewDecoder(res.Body).Decode(ret); err != nil {
+	var ret *QueryResponse
+	if err := json.NewDecoder(res.Body).Decode(&ret); err != nil {
 		return nil, err
 	}
 	return ret, nil
@@ -2162,7 +2684,8 @@ type ProjectsListCall struct {
 	opt_ map[string]interface{}
 }
 
-// List: Lists the projects to which you have at least read access.
+// List: Lists all projects to which you have been granted any project
+// role.
 func (r *ProjectsService) List() *ProjectsListCall {
 	c := &ProjectsListCall{s: r.s, opt_: make(map[string]interface{})}
 	return c
@@ -2182,6 +2705,14 @@ func (c *ProjectsListCall) PageToken(pageToken string) *ProjectsListCall {
 	return c
 }
 
+// Fields allows partial responses to be retrieved.
+// See https://developers.google.com/gdata/docs/2.0/basics#PartialResponse
+// for more information.
+func (c *ProjectsListCall) Fields(s ...googleapi.Field) *ProjectsListCall {
+	c.opt_["fields"] = googleapi.CombineFields(s)
+	return c
+}
+
 func (c *ProjectsListCall) Do() (*ProjectList, error) {
 	var body io.Reader = nil
 	params := make(url.Values)
@@ -2192,11 +2723,14 @@ func (c *ProjectsListCall) Do() (*ProjectList, error) {
 	if v, ok := c.opt_["pageToken"]; ok {
 		params.Set("pageToken", fmt.Sprintf("%v", v))
 	}
+	if v, ok := c.opt_["fields"]; ok {
+		params.Set("fields", fmt.Sprintf("%v", v))
+	}
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects")
 	urls += "?" + params.Encode()
 	req, _ := http.NewRequest("GET", urls, body)
 	googleapi.SetOpaque(req.URL)
-	req.Header.Set("User-Agent", "google-api-go-client/0.5")
+	req.Header.Set("User-Agent", c.s.userAgent())
 	res, err := c.s.client.Do(req)
 	if err != nil {
 		return nil, err
@@ -2205,13 +2739,13 @@ func (c *ProjectsListCall) Do() (*ProjectList, error) {
 	if err := googleapi.CheckResponse(res); err != nil {
 		return nil, err
 	}
-	ret := new(ProjectList)
-	if err := json.NewDecoder(res.Body).Decode(ret); err != nil {
+	var ret *ProjectList
+	if err := json.NewDecoder(res.Body).Decode(&ret); err != nil {
 		return nil, err
 	}
 	return ret, nil
 	// {
-	//   "description": "Lists the projects to which you have at least read access.",
+	//   "description": "Lists all projects to which you have been granted any project role.",
 	//   "httpMethod": "GET",
 	//   "id": "bigquery.projects.list",
 	//   "parameters": {
@@ -2250,13 +2784,22 @@ type TabledataInsertAllCall struct {
 	opt_                      map[string]interface{}
 }
 
-// InsertAll: Inserts the supplied rows into the table.
+// InsertAll: Streams data into BigQuery one record at a time without
+// needing to run a load job. Requires the WRITER dataset role.
 func (r *TabledataService) InsertAll(projectId string, datasetId string, tableId string, tabledatainsertallrequest *TableDataInsertAllRequest) *TabledataInsertAllCall {
 	c := &TabledataInsertAllCall{s: r.s, opt_: make(map[string]interface{})}
 	c.projectId = projectId
 	c.datasetId = datasetId
 	c.tableId = tableId
 	c.tabledatainsertallrequest = tabledatainsertallrequest
+	return c
+}
+
+// Fields allows partial responses to be retrieved.
+// See https://developers.google.com/gdata/docs/2.0/basics#PartialResponse
+// for more information.
+func (c *TabledataInsertAllCall) Fields(s ...googleapi.Field) *TabledataInsertAllCall {
+	c.opt_["fields"] = googleapi.CombineFields(s)
 	return c
 }
 
@@ -2269,15 +2812,19 @@ func (c *TabledataInsertAllCall) Do() (*TableDataInsertAllResponse, error) {
 	ctype := "application/json"
 	params := make(url.Values)
 	params.Set("alt", "json")
+	if v, ok := c.opt_["fields"]; ok {
+		params.Set("fields", fmt.Sprintf("%v", v))
+	}
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{projectId}/datasets/{datasetId}/tables/{tableId}/insertAll")
 	urls += "?" + params.Encode()
 	req, _ := http.NewRequest("POST", urls, body)
-	req.URL.Path = strings.Replace(req.URL.Path, "{projectId}", url.QueryEscape(c.projectId), 1)
-	req.URL.Path = strings.Replace(req.URL.Path, "{datasetId}", url.QueryEscape(c.datasetId), 1)
-	req.URL.Path = strings.Replace(req.URL.Path, "{tableId}", url.QueryEscape(c.tableId), 1)
-	googleapi.SetOpaque(req.URL)
+	googleapi.Expand(req.URL, map[string]string{
+		"projectId": c.projectId,
+		"datasetId": c.datasetId,
+		"tableId":   c.tableId,
+	})
 	req.Header.Set("Content-Type", ctype)
-	req.Header.Set("User-Agent", "google-api-go-client/0.5")
+	req.Header.Set("User-Agent", c.s.userAgent())
 	res, err := c.s.client.Do(req)
 	if err != nil {
 		return nil, err
@@ -2286,13 +2833,13 @@ func (c *TabledataInsertAllCall) Do() (*TableDataInsertAllResponse, error) {
 	if err := googleapi.CheckResponse(res); err != nil {
 		return nil, err
 	}
-	ret := new(TableDataInsertAllResponse)
-	if err := json.NewDecoder(res.Body).Decode(ret); err != nil {
+	var ret *TableDataInsertAllResponse
+	if err := json.NewDecoder(res.Body).Decode(&ret); err != nil {
 		return nil, err
 	}
 	return ret, nil
 	// {
-	//   "description": "Inserts the supplied rows into the table.",
+	//   "description": "Streams data into BigQuery one record at a time without needing to run a load job. Requires the WRITER dataset role.",
 	//   "httpMethod": "POST",
 	//   "id": "bigquery.tabledata.insertAll",
 	//   "parameterOrder": [
@@ -2329,6 +2876,7 @@ func (c *TabledataInsertAllCall) Do() (*TableDataInsertAllResponse, error) {
 	//   },
 	//   "scopes": [
 	//     "https://www.googleapis.com/auth/bigquery",
+	//     "https://www.googleapis.com/auth/bigquery.insertdata",
 	//     "https://www.googleapis.com/auth/cloud-platform"
 	//   ]
 	// }
@@ -2345,7 +2893,8 @@ type TabledataListCall struct {
 	opt_      map[string]interface{}
 }
 
-// List: Retrieves table data from a specified set of rows.
+// List: Retrieves table data from a specified set of rows. Requires the
+// READER dataset role.
 func (r *TabledataService) List(projectId string, datasetId string, tableId string) *TabledataListCall {
 	c := &TabledataListCall{s: r.s, opt_: make(map[string]interface{})}
 	c.projectId = projectId
@@ -2375,6 +2924,14 @@ func (c *TabledataListCall) StartIndex(startIndex uint64) *TabledataListCall {
 	return c
 }
 
+// Fields allows partial responses to be retrieved.
+// See https://developers.google.com/gdata/docs/2.0/basics#PartialResponse
+// for more information.
+func (c *TabledataListCall) Fields(s ...googleapi.Field) *TabledataListCall {
+	c.opt_["fields"] = googleapi.CombineFields(s)
+	return c
+}
+
 func (c *TabledataListCall) Do() (*TableDataList, error) {
 	var body io.Reader = nil
 	params := make(url.Values)
@@ -2388,14 +2945,18 @@ func (c *TabledataListCall) Do() (*TableDataList, error) {
 	if v, ok := c.opt_["startIndex"]; ok {
 		params.Set("startIndex", fmt.Sprintf("%v", v))
 	}
+	if v, ok := c.opt_["fields"]; ok {
+		params.Set("fields", fmt.Sprintf("%v", v))
+	}
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{projectId}/datasets/{datasetId}/tables/{tableId}/data")
 	urls += "?" + params.Encode()
 	req, _ := http.NewRequest("GET", urls, body)
-	req.URL.Path = strings.Replace(req.URL.Path, "{projectId}", url.QueryEscape(c.projectId), 1)
-	req.URL.Path = strings.Replace(req.URL.Path, "{datasetId}", url.QueryEscape(c.datasetId), 1)
-	req.URL.Path = strings.Replace(req.URL.Path, "{tableId}", url.QueryEscape(c.tableId), 1)
-	googleapi.SetOpaque(req.URL)
-	req.Header.Set("User-Agent", "google-api-go-client/0.5")
+	googleapi.Expand(req.URL, map[string]string{
+		"projectId": c.projectId,
+		"datasetId": c.datasetId,
+		"tableId":   c.tableId,
+	})
+	req.Header.Set("User-Agent", c.s.userAgent())
 	res, err := c.s.client.Do(req)
 	if err != nil {
 		return nil, err
@@ -2404,13 +2965,13 @@ func (c *TabledataListCall) Do() (*TableDataList, error) {
 	if err := googleapi.CheckResponse(res); err != nil {
 		return nil, err
 	}
-	ret := new(TableDataList)
-	if err := json.NewDecoder(res.Body).Decode(ret); err != nil {
+	var ret *TableDataList
+	if err := json.NewDecoder(res.Body).Decode(&ret); err != nil {
 		return nil, err
 	}
 	return ret, nil
 	// {
-	//   "description": "Retrieves table data from a specified set of rows.",
+	//   "description": "Retrieves table data from a specified set of rows. Requires the READER dataset role.",
 	//   "httpMethod": "GET",
 	//   "id": "bigquery.tabledata.list",
 	//   "parameterOrder": [
@@ -2487,18 +3048,30 @@ func (r *TablesService) Delete(projectId string, datasetId string, tableId strin
 	return c
 }
 
+// Fields allows partial responses to be retrieved.
+// See https://developers.google.com/gdata/docs/2.0/basics#PartialResponse
+// for more information.
+func (c *TablesDeleteCall) Fields(s ...googleapi.Field) *TablesDeleteCall {
+	c.opt_["fields"] = googleapi.CombineFields(s)
+	return c
+}
+
 func (c *TablesDeleteCall) Do() error {
 	var body io.Reader = nil
 	params := make(url.Values)
 	params.Set("alt", "json")
+	if v, ok := c.opt_["fields"]; ok {
+		params.Set("fields", fmt.Sprintf("%v", v))
+	}
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{projectId}/datasets/{datasetId}/tables/{tableId}")
 	urls += "?" + params.Encode()
 	req, _ := http.NewRequest("DELETE", urls, body)
-	req.URL.Path = strings.Replace(req.URL.Path, "{projectId}", url.QueryEscape(c.projectId), 1)
-	req.URL.Path = strings.Replace(req.URL.Path, "{datasetId}", url.QueryEscape(c.datasetId), 1)
-	req.URL.Path = strings.Replace(req.URL.Path, "{tableId}", url.QueryEscape(c.tableId), 1)
-	googleapi.SetOpaque(req.URL)
-	req.Header.Set("User-Agent", "google-api-go-client/0.5")
+	googleapi.Expand(req.URL, map[string]string{
+		"projectId": c.projectId,
+		"datasetId": c.datasetId,
+		"tableId":   c.tableId,
+	})
+	req.Header.Set("User-Agent", c.s.userAgent())
 	res, err := c.s.client.Do(req)
 	if err != nil {
 		return err
@@ -2567,18 +3140,30 @@ func (r *TablesService) Get(projectId string, datasetId string, tableId string) 
 	return c
 }
 
+// Fields allows partial responses to be retrieved.
+// See https://developers.google.com/gdata/docs/2.0/basics#PartialResponse
+// for more information.
+func (c *TablesGetCall) Fields(s ...googleapi.Field) *TablesGetCall {
+	c.opt_["fields"] = googleapi.CombineFields(s)
+	return c
+}
+
 func (c *TablesGetCall) Do() (*Table, error) {
 	var body io.Reader = nil
 	params := make(url.Values)
 	params.Set("alt", "json")
+	if v, ok := c.opt_["fields"]; ok {
+		params.Set("fields", fmt.Sprintf("%v", v))
+	}
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{projectId}/datasets/{datasetId}/tables/{tableId}")
 	urls += "?" + params.Encode()
 	req, _ := http.NewRequest("GET", urls, body)
-	req.URL.Path = strings.Replace(req.URL.Path, "{projectId}", url.QueryEscape(c.projectId), 1)
-	req.URL.Path = strings.Replace(req.URL.Path, "{datasetId}", url.QueryEscape(c.datasetId), 1)
-	req.URL.Path = strings.Replace(req.URL.Path, "{tableId}", url.QueryEscape(c.tableId), 1)
-	googleapi.SetOpaque(req.URL)
-	req.Header.Set("User-Agent", "google-api-go-client/0.5")
+	googleapi.Expand(req.URL, map[string]string{
+		"projectId": c.projectId,
+		"datasetId": c.datasetId,
+		"tableId":   c.tableId,
+	})
+	req.Header.Set("User-Agent", c.s.userAgent())
 	res, err := c.s.client.Do(req)
 	if err != nil {
 		return nil, err
@@ -2587,8 +3172,8 @@ func (c *TablesGetCall) Do() (*Table, error) {
 	if err := googleapi.CheckResponse(res); err != nil {
 		return nil, err
 	}
-	ret := new(Table)
-	if err := json.NewDecoder(res.Body).Decode(ret); err != nil {
+	var ret *Table
+	if err := json.NewDecoder(res.Body).Decode(&ret); err != nil {
 		return nil, err
 	}
 	return ret, nil
@@ -2652,6 +3237,14 @@ func (r *TablesService) Insert(projectId string, datasetId string, table *Table)
 	return c
 }
 
+// Fields allows partial responses to be retrieved.
+// See https://developers.google.com/gdata/docs/2.0/basics#PartialResponse
+// for more information.
+func (c *TablesInsertCall) Fields(s ...googleapi.Field) *TablesInsertCall {
+	c.opt_["fields"] = googleapi.CombineFields(s)
+	return c
+}
+
 func (c *TablesInsertCall) Do() (*Table, error) {
 	var body io.Reader = nil
 	body, err := googleapi.WithoutDataWrapper.JSONReader(c.table)
@@ -2661,14 +3254,18 @@ func (c *TablesInsertCall) Do() (*Table, error) {
 	ctype := "application/json"
 	params := make(url.Values)
 	params.Set("alt", "json")
+	if v, ok := c.opt_["fields"]; ok {
+		params.Set("fields", fmt.Sprintf("%v", v))
+	}
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{projectId}/datasets/{datasetId}/tables")
 	urls += "?" + params.Encode()
 	req, _ := http.NewRequest("POST", urls, body)
-	req.URL.Path = strings.Replace(req.URL.Path, "{projectId}", url.QueryEscape(c.projectId), 1)
-	req.URL.Path = strings.Replace(req.URL.Path, "{datasetId}", url.QueryEscape(c.datasetId), 1)
-	googleapi.SetOpaque(req.URL)
+	googleapi.Expand(req.URL, map[string]string{
+		"projectId": c.projectId,
+		"datasetId": c.datasetId,
+	})
 	req.Header.Set("Content-Type", ctype)
-	req.Header.Set("User-Agent", "google-api-go-client/0.5")
+	req.Header.Set("User-Agent", c.s.userAgent())
 	res, err := c.s.client.Do(req)
 	if err != nil {
 		return nil, err
@@ -2677,8 +3274,8 @@ func (c *TablesInsertCall) Do() (*Table, error) {
 	if err := googleapi.CheckResponse(res); err != nil {
 		return nil, err
 	}
-	ret := new(Table)
-	if err := json.NewDecoder(res.Body).Decode(ret); err != nil {
+	var ret *Table
+	if err := json.NewDecoder(res.Body).Decode(&ret); err != nil {
 		return nil, err
 	}
 	return ret, nil
@@ -2728,7 +3325,8 @@ type TablesListCall struct {
 	opt_      map[string]interface{}
 }
 
-// List: Lists all tables in the specified dataset.
+// List: Lists all tables in the specified dataset. Requires the READER
+// dataset role.
 func (r *TablesService) List(projectId string, datasetId string) *TablesListCall {
 	c := &TablesListCall{s: r.s, opt_: make(map[string]interface{})}
 	c.projectId = projectId
@@ -2750,6 +3348,14 @@ func (c *TablesListCall) PageToken(pageToken string) *TablesListCall {
 	return c
 }
 
+// Fields allows partial responses to be retrieved.
+// See https://developers.google.com/gdata/docs/2.0/basics#PartialResponse
+// for more information.
+func (c *TablesListCall) Fields(s ...googleapi.Field) *TablesListCall {
+	c.opt_["fields"] = googleapi.CombineFields(s)
+	return c
+}
+
 func (c *TablesListCall) Do() (*TableList, error) {
 	var body io.Reader = nil
 	params := make(url.Values)
@@ -2760,13 +3366,17 @@ func (c *TablesListCall) Do() (*TableList, error) {
 	if v, ok := c.opt_["pageToken"]; ok {
 		params.Set("pageToken", fmt.Sprintf("%v", v))
 	}
+	if v, ok := c.opt_["fields"]; ok {
+		params.Set("fields", fmt.Sprintf("%v", v))
+	}
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{projectId}/datasets/{datasetId}/tables")
 	urls += "?" + params.Encode()
 	req, _ := http.NewRequest("GET", urls, body)
-	req.URL.Path = strings.Replace(req.URL.Path, "{projectId}", url.QueryEscape(c.projectId), 1)
-	req.URL.Path = strings.Replace(req.URL.Path, "{datasetId}", url.QueryEscape(c.datasetId), 1)
-	googleapi.SetOpaque(req.URL)
-	req.Header.Set("User-Agent", "google-api-go-client/0.5")
+	googleapi.Expand(req.URL, map[string]string{
+		"projectId": c.projectId,
+		"datasetId": c.datasetId,
+	})
+	req.Header.Set("User-Agent", c.s.userAgent())
 	res, err := c.s.client.Do(req)
 	if err != nil {
 		return nil, err
@@ -2775,13 +3385,13 @@ func (c *TablesListCall) Do() (*TableList, error) {
 	if err := googleapi.CheckResponse(res); err != nil {
 		return nil, err
 	}
-	ret := new(TableList)
-	if err := json.NewDecoder(res.Body).Decode(ret); err != nil {
+	var ret *TableList
+	if err := json.NewDecoder(res.Body).Decode(&ret); err != nil {
 		return nil, err
 	}
 	return ret, nil
 	// {
-	//   "description": "Lists all tables in the specified dataset.",
+	//   "description": "Lists all tables in the specified dataset. Requires the READER dataset role.",
 	//   "httpMethod": "GET",
 	//   "id": "bigquery.tables.list",
 	//   "parameterOrder": [
@@ -2849,6 +3459,14 @@ func (r *TablesService) Patch(projectId string, datasetId string, tableId string
 	return c
 }
 
+// Fields allows partial responses to be retrieved.
+// See https://developers.google.com/gdata/docs/2.0/basics#PartialResponse
+// for more information.
+func (c *TablesPatchCall) Fields(s ...googleapi.Field) *TablesPatchCall {
+	c.opt_["fields"] = googleapi.CombineFields(s)
+	return c
+}
+
 func (c *TablesPatchCall) Do() (*Table, error) {
 	var body io.Reader = nil
 	body, err := googleapi.WithoutDataWrapper.JSONReader(c.table)
@@ -2858,15 +3476,19 @@ func (c *TablesPatchCall) Do() (*Table, error) {
 	ctype := "application/json"
 	params := make(url.Values)
 	params.Set("alt", "json")
+	if v, ok := c.opt_["fields"]; ok {
+		params.Set("fields", fmt.Sprintf("%v", v))
+	}
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{projectId}/datasets/{datasetId}/tables/{tableId}")
 	urls += "?" + params.Encode()
 	req, _ := http.NewRequest("PATCH", urls, body)
-	req.URL.Path = strings.Replace(req.URL.Path, "{projectId}", url.QueryEscape(c.projectId), 1)
-	req.URL.Path = strings.Replace(req.URL.Path, "{datasetId}", url.QueryEscape(c.datasetId), 1)
-	req.URL.Path = strings.Replace(req.URL.Path, "{tableId}", url.QueryEscape(c.tableId), 1)
-	googleapi.SetOpaque(req.URL)
+	googleapi.Expand(req.URL, map[string]string{
+		"projectId": c.projectId,
+		"datasetId": c.datasetId,
+		"tableId":   c.tableId,
+	})
 	req.Header.Set("Content-Type", ctype)
-	req.Header.Set("User-Agent", "google-api-go-client/0.5")
+	req.Header.Set("User-Agent", c.s.userAgent())
 	res, err := c.s.client.Do(req)
 	if err != nil {
 		return nil, err
@@ -2875,8 +3497,8 @@ func (c *TablesPatchCall) Do() (*Table, error) {
 	if err := googleapi.CheckResponse(res); err != nil {
 		return nil, err
 	}
-	ret := new(Table)
-	if err := json.NewDecoder(res.Body).Decode(ret); err != nil {
+	var ret *Table
+	if err := json.NewDecoder(res.Body).Decode(&ret); err != nil {
 		return nil, err
 	}
 	return ret, nil
@@ -2947,6 +3569,14 @@ func (r *TablesService) Update(projectId string, datasetId string, tableId strin
 	return c
 }
 
+// Fields allows partial responses to be retrieved.
+// See https://developers.google.com/gdata/docs/2.0/basics#PartialResponse
+// for more information.
+func (c *TablesUpdateCall) Fields(s ...googleapi.Field) *TablesUpdateCall {
+	c.opt_["fields"] = googleapi.CombineFields(s)
+	return c
+}
+
 func (c *TablesUpdateCall) Do() (*Table, error) {
 	var body io.Reader = nil
 	body, err := googleapi.WithoutDataWrapper.JSONReader(c.table)
@@ -2956,15 +3586,19 @@ func (c *TablesUpdateCall) Do() (*Table, error) {
 	ctype := "application/json"
 	params := make(url.Values)
 	params.Set("alt", "json")
+	if v, ok := c.opt_["fields"]; ok {
+		params.Set("fields", fmt.Sprintf("%v", v))
+	}
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{projectId}/datasets/{datasetId}/tables/{tableId}")
 	urls += "?" + params.Encode()
 	req, _ := http.NewRequest("PUT", urls, body)
-	req.URL.Path = strings.Replace(req.URL.Path, "{projectId}", url.QueryEscape(c.projectId), 1)
-	req.URL.Path = strings.Replace(req.URL.Path, "{datasetId}", url.QueryEscape(c.datasetId), 1)
-	req.URL.Path = strings.Replace(req.URL.Path, "{tableId}", url.QueryEscape(c.tableId), 1)
-	googleapi.SetOpaque(req.URL)
+	googleapi.Expand(req.URL, map[string]string{
+		"projectId": c.projectId,
+		"datasetId": c.datasetId,
+		"tableId":   c.tableId,
+	})
 	req.Header.Set("Content-Type", ctype)
-	req.Header.Set("User-Agent", "google-api-go-client/0.5")
+	req.Header.Set("User-Agent", c.s.userAgent())
 	res, err := c.s.client.Do(req)
 	if err != nil {
 		return nil, err
@@ -2973,8 +3607,8 @@ func (c *TablesUpdateCall) Do() (*Table, error) {
 	if err := googleapi.CheckResponse(res); err != nil {
 		return nil, err
 	}
-	ret := new(Table)
-	if err := json.NewDecoder(res.Body).Decode(ret); err != nil {
+	var ret *Table
+	if err := json.NewDecoder(res.Body).Decode(&ret); err != nil {
 		return nil, err
 	}
 	return ret, nil
