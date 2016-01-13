@@ -7,7 +7,7 @@
 //   import "google.golang.org/api/bigquery/v2"
 //   ...
 //   bigqueryService, err := bigquery.New(oauthHttpClient)
-package bigquery // import "google.golang.org/api/bigquery/v2"
+package bigquery
 
 import (
 	"bytes"
